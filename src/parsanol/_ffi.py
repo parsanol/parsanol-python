@@ -65,6 +65,15 @@ def load() -> ctypes.CDLL:
     lib.parsanol_parg_error.restype = ctypes.c_void_p
     lib.parsanol_parg_free.argtypes = [ctypes.c_void_p]
     lib.parsanol_parg_free.restype = None
+    # parsanol >= 0.18.19: the recovery export. Optional so an older cdylib
+    # still loads; parse_recovering reports availability instead.
+    if hasattr(lib, "parsanol_parg_parse_recovering"):
+        lib.parsanol_parg_parse_recovering.argtypes = [
+            ctypes.c_char_p,
+            ctypes.c_char_p,
+            ctypes.c_char_p,
+        ]
+        lib.parsanol_parg_parse_recovering.restype = ctypes.c_void_p
     # STATIC string — must never be freed (restype c_char_p copies it).
     lib.parsanol_version.argtypes = []
     lib.parsanol_version.restype = ctypes.c_char_p
@@ -121,5 +130,32 @@ def failure_wire(grammar_json: str, input_text: str) -> dict:
     )
     if not pointer:
         raise ParsanolError(_last_error() or "failure wire unavailable")
+    result = json.loads(_take_owned(pointer))
+    return result if isinstance(result, dict) else {}
+
+
+def recovery_available() -> bool:
+    """Whether the loaded cdylib exports the recovery ABI (>= 0.18.19)."""
+    return hasattr(load(), "parsanol_parg_parse_recovering")
+
+
+def parse_recovering(
+    envelope_json: str, entry: str | None, input_text: str
+) -> dict:
+    """The recovery envelope for an artifact envelope (checksum verified
+    engine-side). Requires a cdylib with the recovery export."""
+    lib = load()
+    if not hasattr(lib, "parsanol_parg_parse_recovering"):
+        raise ParsanolError(
+            "the loaded libparsanol lacks parsanol_parg_parse_recovering "
+            "(requires parsanol >= 0.18.19)"
+        )
+    pointer = lib.parsanol_parg_parse_recovering(
+        envelope_json.encode("utf-8"),
+        (entry.encode("utf-8") if entry is not None else None),
+        input_text.encode("utf-8"),
+    )
+    if not pointer:
+        raise ParsanolError(_last_error() or "recovery envelope unavailable")
     result = json.loads(_take_owned(pointer))
     return result if isinstance(result, dict) else {}

@@ -99,6 +99,19 @@ class PargArtifact:
         """The failure wire for a rejected input (no exception)."""
         return _ffi.failure_wire(self._grammar_json(entry), input_text)
 
+    def recovery_supported(self) -> bool:
+        """Whether the loaded engine exports the recovery ABI."""
+        return _ffi.recovery_available()
+
+    def parse_recovering(self, input_text: str, entry: str | None = None) -> dict:
+        """Best-effort recovery (never raises): `{ok: true, shape}` on
+        success; `{ok: false, partial, error, resyncs, captures,
+        consumed_upto}` on failure — the same envelope every other runtime
+        returns, declared resync spans included. The envelope is
+        checksum-verified engine-side. Requires parsanol >= 0.18.19."""
+        self._entry(entry)  # entry validation before the FFI call
+        return _ffi.parse_recovering(self.envelope_text, entry, input_text)
+
     # -- embedded tests ------------------------------------------------------
 
     def run_tests(self, entry: str | None = None) -> TestRun:
