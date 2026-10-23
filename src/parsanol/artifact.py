@@ -7,7 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import _ffi
+from .bindings import Bindings, canonical
 from .canonical import verify_checksum
+
+
+def apply_bindings(artifact: "PargArtifact", entry: str, shape) -> dict:
+    """Apply an entry's bindings to a shaped tree (the `example` layer)."""
+    return Bindings(artifact.envelope, entry).apply(shape)
 
 
 class ParseFailed(Exception):
@@ -98,9 +104,9 @@ class PargArtifact:
     def run_tests(self, entry: str | None = None) -> TestRun:
         """Replay the artifact's embedded tests through the native engine.
 
-        v1 scope: accept / reject / capture phases. `example` (bindings
-        layer) and `shape` (whole-tree flattening) cases are counted as
-        skipped — see docs/tickets/0003-bindings-and-flattening.md.
+        Phases: accept / reject / capture (grammar layer) / example
+        (bindings layer) / shape (whole-tree layer) — the same five the
+        Ruby and Rust runners evaluate.
         """
         name, _resolved = self._entry(entry)
         failures: list[str] = []
@@ -114,8 +120,8 @@ class PargArtifact:
             kind = test.get("kind")
             text = test.get("input") or ""
             label = f"{kind} {text!r}"
-            if kind not in ("accept", "reject", "capture"):
-                skipped.append(f"{label}: {kind} not in the v1 Python scope")
+            if kind not in ("accept", "reject", "capture", "example", "shape"):
+                skipped.append(f"{label}: {kind} not in the Python scope")
                 continue
             try:
                 tree = self.parse(text, name)
@@ -126,10 +132,36 @@ class PargArtifact:
             if kind == "reject":
                 failures.append(f"{label}: expected rejection, engine matched")
                 continue
+
+            reduced = reduce_slices(tree)
             if kind == "capture":
-                problems = _check_capture(reduce_slices(tree), test.get("expect") or {})
+                problems = _check_capture(reduced, test.get("expect") or {})
                 failures.extend(f"{label}: {problem}" for problem in problems)
+            elif kind == "example":
+                problems = _check_example(self, name, reduced, test.get("expect") or {})
+                failures.extend(f"{label}: {problem}" for problem in problems)
+            elif kind == "shape":
+                if canonical(reduced) != canonical(test.get("expect")):
+                    failures.append(
+                        f"{label}: shape mismatch: expected {test.get('expect')!r}, "
+                        f"got {reduced!r}"
+                    )
         return TestRun(total=total, failures=failures, skipped=skipped)
+
+
+def _check_example(artifact: "PargArtifact", entry: str, reduced, expect: dict) -> list[str]:
+    if not isinstance(expect, dict):
+        return [f"example expectations must be an object, got {expect!r}"]
+    try:
+        bound = apply_bindings(artifact, entry, reduced)
+    except Exception as error:  # bindings errors are test failures
+        return [f"bindings failed: {error}"]
+    problems: list[str] = []
+    for key, want in expect.items():
+        got = bound.get(key)
+        if canonical(got) != canonical(want):
+            problems.append(f"bound {key!r}: expected {want!r}, got {got!r}")
+    return problems
 
 
 _SLICE_KEYS = {"offset", "length", "line", "column", "value"}

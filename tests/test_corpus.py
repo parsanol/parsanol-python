@@ -49,7 +49,6 @@ def test_every_embedded_case_replays() -> None:
             total += run.total
             skipped += len(run.skipped)
             assert not run.failures, f"{path.name}: {run.failures}"
-    # The full corpus is 125 cases; the v1 Python scope skips exactly the
-    # bindings-layer (example) and whole-tree (shape) cases.
+    # The full corpus is 125 cases, all five test phases now evaluated.
     assert total == 125, f"corpus size moved: {total}"
-    assert skipped == 17, f"skip set moved: {skipped}"
+    assert skipped == 0, f"unexpected skips: {skipped}"
