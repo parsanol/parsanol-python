@@ -1,0 +1,5 @@
+corpus
+__pycache__/
+*.egg-info/
+.pytest_cache/
+src/parsanol/lib/

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "parsanol"
+version = "0.1.0"
+description = "Python runtime for parsanol PARG artifacts: checksum-verified artifact load and wasm-grade parsing through the parsanol C ABI"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+# NOTE: the Python floor and the PyPI name are OWNER decisions (see
+# docs/tickets/0001-packaging.md); this skeleton uses the conservative
+# default so CI can run everywhere.
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Compilers",
+  "Topic :: Text Processing :: General",
+]
+
+[project.urls]
+Homepage = "https://www.parsanol.org"
+Repository = "https://github.com/parsanol/parsanol-python"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+parsanol = ["lib/*.so", "lib/*.dylib", "lib/*.dll"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
