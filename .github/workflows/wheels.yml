@@ -1,0 +1,62 @@
+name: Wheels
+
+# Builds release wheels for the supported platforms and uploads them as
+# workflow artifacts. PUBLISHING to PyPI is a separate, owner-gated step
+# (docs/tickets/0001-packaging.md): the package name, the Python floor, and
+# the cadence are owner decisions, and PyPI trusted publishing requires the
+# owner-side project registration first.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'pyproject.toml'
+      - 'src/**'
+      - '.github/workflows/wheels.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            lib: libparsanol.so
+          - os: macos-14
+            lib: libparsanol.dylib
+          - os: windows-2022
+            lib: parsanol.dll
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build the cdylib
+        run: cargo build -p parsanol-ffi --release
+        working-directory: parsanol-rs
+      - name: Stage the vendored engine
+        shell: bash
+        run: |
+          mkdir -p src/parsanol/lib
+          cp "parsanol-rs/target/release/${{ matrix.lib }}" "src/parsanol/lib/${{ matrix.lib }}"
+      - name: Build the wheel
+        run: |
+          python3 -m pip install -U pip wheel
+          python3 -m pip wheel . --no-deps -w dist
+      - name: Smoke the wheel
+        shell: bash
+        run: |
+          python3 -m pip install dist/*.whl pytest
+          PARSANOL_CORPUS_DIR="$GITHUB_WORKSPACE/parsanol-rs/corpus/conformance" \
+            python3 -m pytest tests -q
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist/*.whl
