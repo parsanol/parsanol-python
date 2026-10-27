@@ -14,7 +14,12 @@ import json
 import os
 from pathlib import Path
 
-_LIB_NAMES = ("libparsanol.dylib", "libparsanol.so", "libparsanol.dll")
+_LIB_NAMES = (
+    "libparsanol.dylib",
+    "libparsanol.so",
+    "parsanol.dll",  # cargo emits no lib prefix on windows
+    "libparsanol.dll",
+)
 
 
 class ParsanolError(RuntimeError):
