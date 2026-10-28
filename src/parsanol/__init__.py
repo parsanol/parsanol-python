@@ -9,7 +9,7 @@ from .bindings import Bindings, BindingsError, canonical as canonical_value, col
 from .canonical import canonical_json, checksum_hex, ruby_json_float, verify_checksum
 from ._ffi import ParsanolError, engine_version, load
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "Bindings",

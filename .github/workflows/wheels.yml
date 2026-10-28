@@ -5,9 +5,17 @@ name: Wheels
 # (docs/tickets/0001-packaging.md): the package name, the Python floor, and
 # the cadence are owner decisions, and PyPI trusted publishing requires the
 # owner-side project registration first.
+#
+# The package is pure Python with a VENDORED cdylib, so setuptools tags the
+# wheel `py3-none-any`. That tag is wrong: each wheel carries one OS's
+# binary. Every wheel is retagged with its real platform
+# (`manylinux_*`/`macosx_*`/`win_amd64`) before it is smoke-tested or
+# uploaded — otherwise the three OS builds would be indistinguishable
+# `py3-none-any` files and PyPI would reject the second one.
 
 on:
   workflow_dispatch:
+  workflow_call:
   pull_request:
     paths:
       - 'pyproject.toml'
@@ -26,10 +34,13 @@ jobs:
         include:
           - os: ubuntu-22.04
             lib: libparsanol.so
+            platform_tag: manylinux_2_35_x86_64
           - os: macos-14
             lib: libparsanol.dylib
+            platform_tag: macosx_11_0_arm64
           - os: windows-2022
             lib: parsanol.dll
+            platform_tag: win_amd64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,6 +61,11 @@ jobs:
         run: |
           python3 -m pip install -U pip wheel
           python3 -m pip wheel . --no-deps -w dist
+      - name: Tag the wheel with its platform
+        shell: bash
+        run: |
+          python3 -m wheel tags --remove --python-tag py3 --abi-tag none \
+            --platform-tag "${{ matrix.platform_tag }}" dist/*.whl
       - name: Smoke the wheel
         shell: bash
         run: |
