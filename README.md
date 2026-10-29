@@ -29,6 +29,14 @@ run = artifact.run_tests()                               # embedded tests replay
 On rejection, `parse` raises `ParseFailed` carrying the engine's failure
 wire (`offset`, ranked positions, expected set).
 
+## Releases
+
+parsanol is one product on three language runtimes: **ruby** (rubygems),
+**python** (PyPI, this package), and **typescript** (npm, `parsanol` —
+the wasm-backed runtime). Every release publishes **all three
+together**; a release that ships one runtime and not the others is
+incomplete.
+
 ## Status and honest boundaries (v0.1)
 
 | Capability | State |
