@@ -9,7 +9,15 @@ from .bindings import Bindings, BindingsError, canonical as canonical_value, col
 from .canonical import canonical_json, checksum_hex, ruby_json_float, verify_checksum
 from ._ffi import ParsanolError, engine_version, load
 
-__version__ = "0.1.1"
+try:
+    # The installed distribution's version is authoritative: pyproject is
+    # the single source, and a hardcoded literal here went stale (0.1.1
+    # reported by 0.1.2 wheels, ruby#369's packaging twin).
+    from importlib.metadata import PackageNotFoundError, version
+
+    __version__ = version("parsanol")
+except PackageNotFoundError:  # running from a source checkout
+    __version__ = "0.0.0.dev0"
 
 __all__ = [
     "Bindings",
