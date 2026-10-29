@@ -31,10 +31,11 @@ wire (`offset`, ranked positions, expected set).
 
 ## Releases
 
-parsanol is one product on three language runtimes: **ruby** (rubygems),
-**python** (PyPI, this package), and **typescript** (npm, `parsanol` —
-the wasm-backed runtime). Every release publishes **all three
-together**; a release that ships one runtime and not the others is
+parsanol is one product on **four runtimes**: **rs** (crates.io +
+`@parsanol/wasm` + release binaries), **ruby** (rubygems), **python**
+(PyPI, this package), and **typescript** (npm, `parsanol` — the
+wasm-backed runtime). **Every engine update releases all four
+together**; a release that ships some runtimes and not the rest is
 incomplete.
 
 ## Status and honest boundaries (v0.1)
