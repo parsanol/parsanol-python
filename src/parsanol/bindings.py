@@ -209,25 +209,89 @@ class Bindings:
         values = captures.get(capture)
         if not values:
             return
-        out[self._leaf_key(path)] = self._finalize(binding, values[0])
+        value = values[0]
+        if value is None:
+            # Ruby `return if value.nil?` (ts#34): the absent-optional
+            # wire is null; the key is skipped, never cast to "".
+            return
+        out[self._leaf_key(path)] = self._finalize(binding, value)
 
-    def _assign_array(self, out: dict, prefix: str, group: list[dict], captures: dict) -> None:
+    @staticmethod
+    def _group_instances(shape: Any, prefix: str) -> list[Any] | None:
+        """The `prefix[]` group's instance subtrees — Ruby's BFS walk."""
+        queue: list[Any] = [shape]
+        while queue:
+            node = queue.pop(0)
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    if key == prefix and isinstance(value, list):
+                        return value
+                    if isinstance(value, (dict, list)):
+                        queue.append(value)
+            elif isinstance(node, list):
+                queue.extend(node)
+        if isinstance(shape, list) and any(isinstance(item, dict) for item in shape):
+            return shape
+        return None
+
+    def _assign_array(
+        self,
+        out: dict,
+        prefix: str,
+        group: list[dict],
+        captures: dict,
+        shape: Any = None,
+    ) -> None:
+        # Position-aware pairing (ruby#381): when the shape nests the
+        # group's instances under the prefix key (or IS the instance
+        # array — a repetition-root entry), each instance's subtree
+        # owns its captures. Captures outside any instance keep the
+        # legacy occurrence pairing.
+        instances = self._group_instances(shape, prefix) if shape is not None else None
+        if instances is not None:
+            if not instances:
+                # rs#370: the occurrence path's `count == 0 → bind
+                # nothing` — a zero-iteration repetition (the tree
+                # carries `prefix: []`) binds no key.
+                return
+            list_out: list[dict] = out.setdefault(prefix, [])
+            for instance in instances:
+                found = collect_captures(instance)
+                element: dict = {}
+                for binding in group:
+                    capture = binding.get("capture") or ""
+                    values = found.get(capture)
+                    if not values:
+                        continue
+                    value = values[0]
+                    if value is None:
+                        continue
+                    element[self._leaf_key(binding.get("path") or "")] = self._finalize(
+                        binding, value
+                    )
+                list_out.append(element)
+            return
         count = max(
             (len(captures[b.get("capture") or ""]) for b in group if (b.get("capture") or "") in captures),
             default=0,
         )
         if count == 0:
             return
-        list_out: list[dict] = []
+        list_out = []
         for index in range(count):
-            element: dict = {}
+            element = {}
             for binding in group:
                 capture = binding.get("capture") or ""
                 values = captures.get(capture)
                 if values is None or index >= len(values):
                     continue
+                value = values[index]
+                if value is None:
+                    # Ruby `next if value.nil?`: null slots bind
+                    # nothing in their element.
+                    continue
                 element[self._leaf_key(binding.get("path") or "")] = self._finalize(
-                    binding, values[index]
+                    binding, value
                 )
             list_out.append(element)
         out[prefix] = list_out
@@ -255,5 +319,5 @@ class Bindings:
                 order.append(prefix)
         for prefix in order:
             group = [binding for candidate, binding in arrays if candidate == prefix]
-            self._assign_array(out, prefix, group, captures)
+            self._assign_array(out, prefix, group, captures, shape)
         return out
