@@ -134,3 +134,19 @@ def verify_checksum(envelope: dict) -> None:
     computed = checksum_hex(payload)
     if stored != computed:
         raise ValueError(f"checksum mismatch: stored {stored}, computed {computed}")
+
+
+def normalize_edition(value) -> int | None:
+    """The artifact's edition level, or None when the value is one this
+    runtime does not know (ruby#357's contract, mirrored from the Rust
+    `normalize_edition`): absent/null/1/2/"1"/"2"/"v1"/"v2"/"classic"
+    normalize to 1 or 2; everything else rejects at load."""
+    if value is None:
+        return 1
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value in (1, 2) else None
+    if isinstance(value, str):
+        return {"1": 1, "v1": 1, "classic": 1, "2": 2, "v2": 2}.get(value)
+    return None
