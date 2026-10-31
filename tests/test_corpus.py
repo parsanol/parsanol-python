@@ -51,5 +51,5 @@ def test_every_embedded_case_replays() -> None:
             assert not run.failures, f"{path.name}: {run.failures}"
     # The full corpus is 155 cases, all five test phases now evaluated
     # (the rs 0.19.7 corpus; the pin moves with the submodule).
-    assert total == 162, f"corpus size moved: {total}"
+    assert total == 165, f"corpus size moved: {total}"
     assert skipped == 0, f"unexpected skips: {skipped}"
