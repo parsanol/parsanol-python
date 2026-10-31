@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import _ffi
 from .bindings import Bindings, canonical
-from .canonical import verify_checksum
+from .canonical import normalize_edition, verify_checksum
 
 
 def apply_bindings(artifact: "PargArtifact", entry: str, shape) -> dict:
@@ -51,6 +51,13 @@ class PargArtifact:
         self.envelope_text = envelope_text
         envelope = json.loads(envelope_text)
         verify_checksum(envelope)
+        level = normalize_edition(envelope.get("edition"))
+        if level is None:
+            raise ValueError(
+                "artifact declares an edition this runtime does not know: "
+                f"{envelope.get('edition')!r}"
+            )
+        self.edition_level = level
         self.envelope = envelope
         entries = envelope.get("entries") or {}
         default = envelope.get("default_entry")
@@ -67,6 +74,21 @@ class PargArtifact:
     @property
     def checksum(self) -> str | None:
         return self.envelope.get("checksum")
+
+    @property
+    def semantics_hash(self) -> str | None:
+        """The semantics hash (ruby#377): stable across re-bakes by a
+        newer compiler when the grammar is unchanged. None on artifacts
+        baked before the field existed."""
+        return self.envelope.get("semantics_hash")
+
+    @property
+    def edition(self) -> int:
+        """The normalized edition level (1 = legacy shapes, 2 = named
+        trees). Legacy spellings — "v1" / "v2" / "classic" / "1" / "2"
+        — and an absent field normalize here; unknown values are
+        rejected at load."""
+        return self.edition_level
 
     def entry_names(self) -> list[str]:
         return sorted(self.envelope.get("entries") or {})
