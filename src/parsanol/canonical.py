@@ -126,11 +126,16 @@ def checksum_hex(payload) -> str:
 
 
 def verify_checksum(envelope: dict) -> None:
-    """Raise ValueError when the envelope's checksum does not verify."""
+    """Raise ValueError when the envelope's checksum does not verify.
+
+    byte_checksum — the bake's byte-exact file digest (parsanol-ruby#443)
+    — is excluded from the canonical payload exactly like `checksum`: it
+    attests the producer's serialization, not the content."""
     stored = envelope.get("checksum")
     if not isinstance(stored, str):
         raise ValueError("envelope has no checksum")
-    payload = {key: value for key, value in envelope.items() if key != "checksum"}
+    excluded = {"checksum", "byte_checksum"}
+    payload = {key: value for key, value in envelope.items() if key not in excluded}
     computed = checksum_hex(payload)
     if stored != computed:
         raise ValueError(f"checksum mismatch: stored {stored}, computed {computed}")
