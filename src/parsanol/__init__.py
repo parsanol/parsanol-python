@@ -6,6 +6,14 @@ C ABI (the same engine the Ruby, Rust, wasm, and TypeScript runtimes use).
 
 from .artifact import ParseFailed, PargArtifact, TestRun, apply_bindings
 from .bindings import Bindings, BindingsError, canonical as canonical_value, collect_captures
+from .bindings_artifact import (
+    BINDING_TARGETS,
+    BINDINGS_ARTIFACT_KIND,
+    BindingsArtifact,
+    BindingsArtifactError,
+    SUPPORTED_BINDING_VERSION,
+    bindings_envelope,
+)
 from .canonical import canonical_json, checksum_hex, ruby_json_float, verify_checksum
 from ._ffi import ParsanolError, engine_version, load
 
