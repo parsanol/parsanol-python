@@ -35,7 +35,7 @@ jobs:
           - os: ubuntu-22.04
             lib: libparsanol.so
             platform_tag: manylinux_2_35_x86_64
-          - os: macos-14
+          - os: macos-15
             lib: libparsanol.dylib
             platform_tag: macosx_11_0_arm64
           - os: windows-2022
