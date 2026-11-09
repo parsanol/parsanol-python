@@ -49,7 +49,9 @@ def test_every_embedded_case_replays() -> None:
             total += run.total
             skipped += len(run.skipped)
             assert not run.failures, f"{path.name}: {run.failures}"
-    # The full corpus is 169 cases, all five test phases now evaluated
-    # (the rs 0.19.20 corpus; the pin moves with the submodule).
-    assert total == 169, f"corpus size moved: {total}"
+    # The corpus grows as envelope members and flavors land (ruby#420's
+    # rule: a new member ships with its corpus case in the same train),
+    # so the count is a floor, not a pin -- the gate is that every case
+    # replays, not that the corpus froze.
+    assert total >= 169, f"corpus size moved: {total}"
     assert skipped == 0, f"unexpected skips: {skipped}"
