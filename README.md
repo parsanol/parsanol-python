@@ -63,3 +63,18 @@ python3 -m pytest tests -q
 
 The corpus gate (`tests/test_corpus.py`) pins the size: 155 cases,
 zero skips — when it moves, this repo moves with it deliberately.
+
+## Explicit native libraries
+
+`PargArtifact.from_path(path, library_path="/absolute/path/to/library")` uses
+an independent native context. It never changes the process environment or
+the default runtime, and an invalid explicit path never falls back to another
+library. The library loads lazily on the first native operation.
+
+To share one engine between artifacts, create `NativeContext(library_path)`
+and pass `native_context=context` to their constructors or `from_path`. Each
+context binds its own parse, error, recovery and free functions; every owned
+result is freed through the context that created it, including read failures.
+`context.engine_version()` identifies that engine. Pass either `library_path`
+or `native_context`. Existing constructors and module-level functions keep
+their default lookup and singleton behavior.
