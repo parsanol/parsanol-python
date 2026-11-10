@@ -127,6 +127,20 @@ class PargArtifact:
             raise ParseFailed(self._native.failure_wire(grammar_json, input_text))
         return shaped
 
+    def parse_with_compatibility(self, input_text: str, entry: str | None = None, *,
+                                 compatibility: str):
+        """Explicit strict/Parslet shape; existing parse() remains strict.
+
+        Parslet mode selects legacy memo ordering and causal rejected-subtree
+        diagnostics, without fabricating recovery captures.
+        """
+        resolved, _ = self._entry(entry)
+        result = self._native.parse_with_compatibility(
+            self.envelope_text, resolved, input_text, compatibility)
+        if not result["ok"]:
+            raise ParseFailed(result["error"])
+        return result["shape"]
+
     def parse_wire(self, input_text: str, entry: str | None = None) -> dict:
         """The failure wire for a rejected input (no exception)."""
         return self._native.failure_wire(self._grammar_json(entry), input_text)

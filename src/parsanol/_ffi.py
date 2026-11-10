@@ -114,6 +114,9 @@ class NativeContext:
     def parse_shaped(self, grammar_json: str, input_text: str):
         return parse_shaped(grammar_json, input_text, context=self)
 
+    def parse_with_compatibility(self, envelope_json, entry, input_text, compatibility):
+        return parse_with_compatibility(envelope_json, entry, input_text, compatibility, context=self)
+
     def failure_wire(self, grammar_json: str, input_text: str) -> dict:
         return failure_wire(grammar_json, input_text, context=self)
 
@@ -167,6 +170,34 @@ def parse_shaped(grammar_json: str, input_text: str, *, context: NativeContext |
     if not pointer:
         return None
     return json.loads(_take_owned(pointer, context=context))
+
+
+def parse_with_compatibility(envelope_json: str, entry: str, input_text: str,
+                             compatibility: str, *, context: NativeContext | None = None) -> dict:
+    """Explicit strict/Parslet parsing; requires the additive native policy ABI.
+
+    Unknown policies and unsupported engines fail rather than silently falling
+    back to a different parsing or diagnostic contract.
+    """
+    if compatibility not in ("strict", "parslet"):
+        raise ValueError("compatibility must be 'strict' or 'parslet'")
+    for label, value in (("artifact", envelope_json), ("entry", entry), ("input", input_text)):
+        if not isinstance(value, str):
+            raise TypeError(f"{label} must be a str")
+        if "\x00" in value:
+            raise ValueError(f"{label} must not contain NUL")
+    lib = context.load() if context is not None else load()
+    if not hasattr(lib, "parsanol_parg_parse_with_compatibility"):
+        raise ParsanolError("native engine does not expose explicit parsing compatibility")
+    parse = lib.parsanol_parg_parse_with_compatibility
+    parse.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint32]
+    parse.restype = ctypes.c_void_p
+    pointer = parse(envelope_json.encode("utf-8"), entry.encode("utf-8"),
+                    input_text.encode("utf-8"), int(compatibility == "parslet"))
+    result = json.loads(_take_owned(pointer, context=context))
+    if not isinstance(result, dict) or not isinstance(result.get("ok"), bool):
+        raise ParsanolError("invalid native compatibility result envelope")
+    return result
 
 
 def failure_wire(grammar_json: str, input_text: str, *, context: NativeContext | None = None) -> dict:
