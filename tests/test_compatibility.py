@@ -55,3 +55,19 @@ def test_old_engine_rejects_unsupported_policy_explicitly():
     assert artifact.parse('a!') is not None
     with pytest.raises(ParsanolError,match='does not expose'):
         artifact.parse_with_compatibility('a!',compatibility='parslet')
+
+
+def test_real_resource_guard_is_distinct_from_syntax_and_reusable(library):
+    from parsanol import NativeResourceError
+    value={"shape":"parsanol-tree/v2","grammar":"Recursive","version":"1.0.0","default_entry":"main",
+        "entries":{"main":{"root":"main","grammar":{"root":0,"atoms":[
+            {"Entity":{"atom":1}},{"Alternative":{"atoms":[2,5]}},{"Sequence":{"atoms":[3,0,4]}},
+            {"Str":{"pattern":"("}},{"Str":{"pattern":")"}},{"Str":{"pattern":"x"}}]}}}}
+    value['checksum']=checksum_hex(value)
+    artifact=PargArtifact(json.dumps(value),library_path=library)
+    with pytest.raises(NativeResourceError)as error:
+        artifact.parse_with_compatibility('('*1200+'x'+')'*1200,compatibility='strict')
+    assert not isinstance(error.value,ParseFailed)
+    assert error.value.category=='recursion_limit' and error.value.max_depth==1000
+    assert error.value.wire['offset']is None
+    assert artifact.parse_with_compatibility('x',compatibility='strict')is not None

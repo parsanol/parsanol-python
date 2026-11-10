@@ -15,7 +15,7 @@ from .bindings_artifact import (
     bindings_envelope,
 )
 from .canonical import canonical_json, checksum_hex, ruby_json_float, verify_checksum
-from ._ffi import NativeContext, ParsanolError, engine_version, load
+from ._ffi import NativeContext, ParsanolError, NativeResourceError, engine_version, load
 
 try:
     # The installed distribution's version is authoritative: pyproject is
@@ -32,7 +32,7 @@ __all__ = [
     "BindingsError",
     "PargArtifact",
     "ParseFailed",
-    "ParsanolError",
+    "ParsanolError", "NativeResourceError",
     "NativeContext",
     "TestRun",
     "apply_bindings",

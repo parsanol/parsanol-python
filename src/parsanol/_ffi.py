@@ -25,6 +25,16 @@ _LIB_NAMES = (
 class ParsanolError(RuntimeError):
     """The engine reported a hard error (registration, loading, ABI)."""
 
+class NativeResourceError(ParsanolError):
+    """A structured native rule-recursion guard, never a syntax refusal."""
+    def __init__(self, wire: dict):
+        self.wire = wire
+        self.category = wire["category"]
+        self.depth = wire["depth"]
+        self.max_depth = wire["max_depth"]
+        super().__init__(f"native parser {self.category}: depth {self.depth}, limit {self.max_depth}")
+
+
 
 def _candidate_paths(library_path: str | Path | None = None) -> list[str]:
     if library_path is not None:

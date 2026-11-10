@@ -138,6 +138,8 @@ class PargArtifact:
         result = self._native.parse_with_compatibility(
             self.envelope_text, resolved, input_text, compatibility)
         if not result["ok"]:
+            if result["error"].get("category") in ("recursion_limit", "call_depth_limit"):
+                raise _ffi.NativeResourceError(result["error"])
             raise ParseFailed(result["error"])
         return result["shape"]
 
