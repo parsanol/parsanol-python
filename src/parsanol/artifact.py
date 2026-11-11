@@ -47,7 +47,8 @@ class PargArtifact:
     fails loudly on mismatch — never silently mis-parses.
     """
 
-    def __init__(self, envelope_text: str):
+    def __init__(self, envelope_text: str, *, library_path: str | Path | None = None,
+                 native_context: _ffi.NativeContext | None = None):
         self.envelope_text = envelope_text
         envelope = json.loads(envelope_text)
         verify_checksum(envelope)
@@ -64,10 +65,19 @@ class PargArtifact:
         if default is None and entries:
             default = sorted(entries)[0]
         self.default_entry: str | None = default
+        if library_path is not None and native_context is not None:
+            raise ValueError("pass library_path or native_context, not both")
+        if native_context is not None and not isinstance(native_context, _ffi.NativeContext):
+            raise TypeError("native_context must be a NativeContext")
+        self.native_context = (native_context if native_context is not None else
+                               _ffi.NativeContext(library_path) if library_path is not None else None)
+        self._native = self.native_context if self.native_context is not None else _ffi
 
     @classmethod
-    def from_path(cls, path: str | Path) -> "PargArtifact":
-        return cls(Path(path).read_text(encoding="utf-8"))
+    def from_path(cls, path: str | Path, *, library_path: str | Path | None = None,
+                  native_context: _ffi.NativeContext | None = None) -> "PargArtifact":
+        return cls(Path(path).read_text(encoding="utf-8"), library_path=library_path,
+                   native_context=native_context)
 
     # -- structure ---------------------------------------------------------
 
@@ -112,18 +122,34 @@ class PargArtifact:
     def parse(self, input_text: str, entry: str | None = None):
         """Shaped tree (Python objects) or raises ParseFailed."""
         grammar_json = self._grammar_json(entry)
-        shaped = _ffi.parse_shaped(grammar_json, input_text)
+        shaped = self._native.parse_shaped(grammar_json, input_text)
         if shaped is None:
-            raise ParseFailed(_ffi.failure_wire(grammar_json, input_text))
+            raise ParseFailed(self._native.failure_wire(grammar_json, input_text))
         return shaped
+
+    def parse_with_compatibility(self, input_text: str, entry: str | None = None, *,
+                                 compatibility: str):
+        """Explicit strict/Parslet shape; existing parse() remains strict.
+
+        Parslet mode selects legacy memo ordering and causal rejected-subtree
+        diagnostics, without fabricating recovery captures.
+        """
+        resolved, _ = self._entry(entry)
+        result = self._native.parse_with_compatibility(
+            self.envelope_text, resolved, input_text, compatibility)
+        if not result["ok"]:
+            if result["error"].get("category") in ("recursion_limit", "call_depth_limit"):
+                raise _ffi.NativeResourceError(result["error"])
+            raise ParseFailed(result["error"])
+        return result["shape"]
 
     def parse_wire(self, input_text: str, entry: str | None = None) -> dict:
         """The failure wire for a rejected input (no exception)."""
-        return _ffi.failure_wire(self._grammar_json(entry), input_text)
+        return self._native.failure_wire(self._grammar_json(entry), input_text)
 
     def recovery_supported(self) -> bool:
         """Whether the loaded engine exports the recovery ABI."""
-        return _ffi.recovery_available()
+        return self._native.recovery_available()
 
     def parse_recovering(self, input_text: str, entry: str | None = None) -> dict:
         """Best-effort recovery (never raises): `{ok: true, shape}` on
@@ -132,7 +158,7 @@ class PargArtifact:
         returns, declared resync spans included. The envelope is
         checksum-verified engine-side. Requires parsanol >= 0.18.19."""
         self._entry(entry)  # entry validation before the FFI call
-        return _ffi.parse_recovering(self.envelope_text, entry, input_text)
+        return self._native.parse_recovering(self.envelope_text, entry, input_text)
 
     # -- embedded tests ------------------------------------------------------
 
