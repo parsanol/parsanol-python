@@ -12,11 +12,27 @@ pure-portable C ABI cdylib, the same binary the Ruby ffi tier ships) via
 pip install parsanol
 ```
 
-Each platform wheel **vendors** the cdylib: Linux (manylinux_2_35,
-x86_64), macOS (arm64), Windows (x64). There is no sdist — the Rust
-sources are a submodule of the repository, not of the archive, so a
-source install could never load the engine. Point a locally built
-library at the runtime with `PARSANOL_CDYLIB=/path/to/libparsanol`.
+Each platform wheel **vendors** the cdylib, and the full conformance
+suite runs on every wheel platform at build time (the emulated legs
+included):
+
+| platform | tag | proof |
+|---|---|---|
+| Linux x86_64 (glibc) | manylinux_2_35 | full suite, native runner |
+| Linux aarch64 (glibc) | manylinux_2_35 | full suite, native arm runner |
+| Linux aarch64 (musl) | musllinux_1_2 | full suite, native arm runner |
+| Linux i686 (glibc) | manylinux_2_35 | full suite under qemu |
+| Linux armv7l (musl) | musllinux_1_2 | full suite under qemu |
+| Linux ppc64le | manylinux_2_35 | full suite under qemu |
+| Linux s390x | manylinux_2_35 | big-endian; full suite under qemu |
+| Linux riscv64 | manylinux_2_35 | full suite under qemu |
+| macOS x86_64 + arm64 | macosx_11_0_universal2 | lipo'd engine; native runners |
+| Windows x64 / ARM64 / x86 | win_amd64 / win_arm64 / win32 | full suite, native runner |
+
+There is no sdist — the Rust sources are a submodule of the
+repository, not of the archive, so a source install could never load
+the engine. Point a locally built library at the runtime with
+`PARSANOL_CDYLIB=/path/to/libparsanol`.
 
 ```python
 from parsanol import PargArtifact
