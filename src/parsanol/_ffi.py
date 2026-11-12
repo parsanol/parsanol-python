@@ -136,6 +136,9 @@ class NativeContext:
     def parse_recovering(self, envelope_json: str, entry: str | None, input_text: str) -> dict:
         return parse_recovering(envelope_json, entry, input_text, context=self)
 
+    def export_grammar(self, artifact_json: str, target: str, recovery: bool = False) -> str:
+        return export_grammar(artifact_json, target, recovery, context=self)
+
 
 def load() -> ctypes.CDLL:
     """Load the default engine once, preserving existing lookup behavior."""
@@ -247,3 +250,40 @@ def parse_recovering(
         raise ParsanolError(_last_error(context=context) or "recovery envelope unavailable")
     result = json.loads(_take_owned(pointer, context=context))
     return result if isinstance(result, dict) else {}
+
+
+def export_available(*, context: NativeContext | None = None) -> bool:
+    """Whether the loaded cdylib exports the constrained-decoder export
+    ABI (requires parsanol >= 0.20.16, the Rust-authoritative export)."""
+    lib = context.load() if context is not None else load()
+    return hasattr(lib, "parsanol_parg_export")
+
+
+def export_grammar(artifact_json: str, target: str, recovery: bool = False,
+                   *, context: NativeContext | None = None) -> str:
+    """Lower a checksum-verified artifact to a constrained-decoder
+    grammar form: target "xgrammar" (EBNF `name ::= body`) or
+    "llguidance" (Lark `name: body`, `start:` prologue); `recovery`
+    lowers each declared resync pattern as an escape alternative at the
+    repetition spine. Rust is the authoritative lowering — the Python
+    runtime inherits it through this C-ABI surface instead of a
+    per-language port. An unsupported construct or a recursive grammar
+    raises ParsanolError naming the construct.
+    """
+    lib = context.load() if context is not None else load()
+    if not hasattr(lib, "parsanol_parg_export"):
+        raise ParsanolError(
+            "the loaded libparsanol lacks parsanol_parg_export "
+            "(requires parsanol >= 0.20.16)"
+        )
+    export = lib.parsanol_parg_export
+    export.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+    export.restype = ctypes.c_void_p
+    pointer = export(
+        artifact_json.encode("utf-8"),
+        target.encode("utf-8"),
+        1 if recovery else 0,
+    )
+    if not pointer:
+        raise ParsanolError(_last_error(context=context) or "export unavailable")
+    return _take_owned(pointer, context=context)
