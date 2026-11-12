@@ -37,7 +37,7 @@ def require_export():
 @pytest.fixture(scope="module")
 def fixture_cases() -> list[dict]:
     assert CORPUS_FIXTURE.is_file(), "the corpus export fixture must ship with the package"
-    return json.loads(CORPUS_FIXTURE.read_text())["cases"]
+    return json.loads(CORPUS_FIXTURE.read_text(encoding="utf-8"))["cases"]
 
 
 def test_corpus_export_bytes_match_the_ruby_oracle(fixture_cases) -> None:
@@ -51,7 +51,7 @@ def test_corpus_export_bytes_match_the_ruby_oracle(fixture_cases) -> None:
         path = artifacts / f"{case['artifact']}.json"
         if not path.is_file():
             continue
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         if hashlib.sha256(text.encode()).hexdigest() != case["artifact_sha256"]:
             stale += 1
             continue
