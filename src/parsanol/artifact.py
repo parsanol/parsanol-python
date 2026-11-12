@@ -160,6 +160,22 @@ class PargArtifact:
         self._entry(entry)  # entry validation before the FFI call
         return self._native.parse_recovering(self.envelope_text, entry, input_text)
 
+    # -- constrained-decoding export ------------------------------------------
+
+    def export(self, target: str, recovery: bool = False) -> str:
+        """Lower the artifact to a constrained-decoder grammar form.
+
+        target: "xgrammar" (EBNF `name ::= body`) or "llguidance"
+        (Lark `name: body`, `start:` prologue); recovery lowers each
+        declared resync pattern as an escape alternative at the
+        repetition spine. Rust is the authoritative lowering — the
+        Python runtime inherits it through the C ABI; an unsupported
+        construct or a recursive grammar raises ParsanolError naming
+        the construct. Requires parsanol >= 0.20.16 (check
+        export_available()).
+        """
+        return _ffi.export_grammar(self.envelope_text, target, recovery)
+
     # -- embedded tests ------------------------------------------------------
 
     def run_tests(self, entry: str | None = None) -> TestRun:
