@@ -66,16 +66,16 @@ jobs:
             lib: parsanol.dll
             platform_tag: win_amd64
             dist: win-amd64
-          - os: windows-2022
+          - os: windows-11-arm
             lib: parsanol.dll
             platform_tag: win_arm64
             dist: win-arm64
-            rust_target: aarch64-pc-windows-msvc
           - os: windows-2022
             lib: parsanol.dll
             platform_tag: win32
             dist: win-x86
             rust_target: i686-pc-windows-msvc
+            python_arch: x86
     env:
       PARSANOL_RUST_TARGET: ${{ matrix.rust_target }}
     steps:
@@ -86,6 +86,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          architecture: ${{ matrix.python_arch }}
       - name: musl toolchain (the aarch64 musl leg)
         if: matrix.musl
         run: sudo apt-get update && sudo apt-get install -y musl-tools
@@ -105,10 +106,20 @@ jobs:
             --platform-tag "${{ matrix.platform_tag }}" dist/*.whl
       - name: Smoke the wheel (the full suite)
         shell: bash
+        # the musl wheel installs on musl python only — smoke it in an
+        # alpine arm64 container
         run: |
-          python3 -m pip install dist/*.whl pytest
-          PARSANOL_CORPUS_DIR="$GITHUB_WORKSPACE/parsanol-rs/corpus/conformance" \
-            python3 -m pytest tests -q
+          if [ "${{ matrix.musl }}" = "true" ]; then
+            docker run --rm --platform linux/arm64 \
+              -v "$GITHUB_WORKSPACE":/io -w /io alpine:3.20 \
+              sh -c 'apk add -q python3 py3-pytest && \
+                PARSANOL_CORPUS_DIR=/io/parsanol-rs/corpus/conformance \
+                python3 -m pytest tests -q'
+          else
+            python3 -m pip install dist/*.whl pytest
+            PARSANOL_CORPUS_DIR="$GITHUB_WORKSPACE/parsanol-rs/corpus/conformance" \
+              python3 -m pytest tests -q
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.dist }}
@@ -129,7 +140,7 @@ jobs:
         include:
           - arch: linux/386
             image: quay.io/pypa/manylinux_2_28_i686:2026.11.07-1
-            platform_tag: manylinux_2_35_i686
+            platform_tag: manylinux_2_28_i686
             dist: manylinux-i686
           - arch: linux/arm/v7
             image: quay.io/pypa/musllinux_1_2_armv7l:2026.11.07-1
@@ -138,15 +149,15 @@ jobs:
             allow_fail: true # rustup ships no musl-armv7 installer
           - arch: linux/ppc64le
             image: quay.io/pypa/manylinux_2_28_ppc64le:2026.11.07-1
-            platform_tag: manylinux_2_35_ppc64le
+            platform_tag: manylinux_2_28_ppc64le
             dist: manylinux-ppc64le
           - arch: linux/s390x
             image: quay.io/pypa/manylinux_2_28_s390x:2026.11.07-1
-            platform_tag: manylinux_2_35_s390x
+            platform_tag: manylinux_2_28_s390x
             dist: manylinux-s390x
           - arch: linux/riscv64
-            image: quay.io/pypa/manylinux_2_28_riscv64:2026.11.07-1
-            platform_tag: manylinux_2_35_riscv64
+            image: quay.io/pypa/manylinux_2_31_riscv64:2026.11.07-1
+            platform_tag: manylinux_2_31_riscv64
             dist: manylinux-riscv64
             allow_fail: true # rustc under qemu-riscv64: runtime unobserved
     steps:
