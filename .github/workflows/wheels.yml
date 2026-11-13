@@ -2,21 +2,20 @@ name: Wheels
 
 # Builds release wheels for the supported platforms and uploads them as
 # workflow artifacts. PUBLISHING to PyPI is a separate, owner-gated step
-# (publish.yml, trusted publishing): the package name, the Python floor, and
-# the cadence are owner decisions.
+# (publish.yml, trusted publishing).
 #
-# The package is pure Python with a VENDORED cdylib, so setuptools tags the
-# wheel `py3-none-any`. That tag is wrong: each wheel carries one platform's
-# binary. Every wheel is retagged with its real platform
-# (`manylinux_*`/`musllinux_*`/`macosx_*`/`win_*`) after cibuildwheel runs,
-# before the smoke suite or upload.
+# The package is pure Python with a VENDORED cdylib, so setuptools tags
+# the wheel `py3-none-any` — wrong per platform. Every wheel is retagged
+# with its real platform before the smoke suite or upload.
 #
 # The platform matrix follows leptris/leptris-py#346's shape: native
-# runners where they exist (x64, aarch64, macOS, Windows), QEMU-emulated
-# build+test containers for the cross-arch Linux legs (the emulated host
-# IS the target — `scripts/vendor_engine.sh` installs the emulated
-# rustup and cargo builds natively for it), and the FULL conformance
-# suite runs on every wheel platform, emulated legs included.
+# runners where they exist, QEMU-emulated containers for the cross-arch
+# Linux legs (the emulated host IS the target — `vendor_engine.sh`
+# installs the emulated rustup and cargo builds natively for it), and
+# the FULL conformance suite runs on every wheel platform. cibuildwheel
+# was evaluated and rejected: it refuses pure wheels by design, and
+# this package's wheel doctrine (vendored binary, then retag) is its
+# own — the emulated legs drive the pinned pypa containers directly.
 
 on:
   workflow_dispatch:
@@ -31,141 +30,149 @@ on:
 permissions:
   contents: read
 
+env:
+  ENGINE_COMMIT_FILE: parsanol-rs-version.txt
+
 jobs:
-  build:
+  # -- native runners ----------------------------------------------------
+  # cargo builds on the runner (cross for the Windows legs via
+  # PARSANOL_RUST_TARGET; universal2 lipo on macOS; musl on the arm
+  # runner with musl-tools)
+  build-native:
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.allow_fail == true }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          # -- Linux, native runners -------------------------------------
           - os: ubuntu-22.04
-            cibw: "cp39-manylinux_x86_64"
+            lib: libparsanol.so
             platform_tag: manylinux_2_35_x86_64
             dist: manylinux-x86_64
           - os: ubuntu-24.04-arm
-            cibw: "cp39-manylinux_aarch64"
+            lib: libparsanol.so
             platform_tag: manylinux_2_35_aarch64
             dist: manylinux-aarch64
           - os: ubuntu-24.04-arm
-            cibw: "cp39-musllinux_aarch64"
+            lib: libparsanol.so
             platform_tag: musllinux_1_2_aarch64
             dist: musllinux-aarch64
-
-          # -- Linux, QEMU-emulated build + test containers ---------------
-          - os: ubuntu-latest
-            cibw: "cp39-manylinux_i686"
-            platform_tag: manylinux_2_35_i686
-            dist: manylinux-i686
-            archs_linux: "i686"
-          # rustup ships no musl-armv7 installer (the emulated
-          # container cannot bootstrap rust) — opt-in until a path
-          # exists
-          - os: ubuntu-latest
-            cibw: "cp39-musllinux_armv7l"
-            platform_tag: musllinux_1_2_armv7l
-            dist: musllinux-armv7l
-            archs_linux: "armv7l"
-            allow_fail: true
-          - os: ubuntu-latest
-            cibw: "cp39-manylinux_ppc64le"
-            platform_tag: manylinux_2_35_ppc64le
-            dist: manylinux-ppc64le
-            archs_linux: "ppc64le"
-          - os: ubuntu-latest
-            cibw: "cp39-manylinux_s390x"
-            platform_tag: manylinux_2_35_s390x
-            dist: manylinux-s390x
-            archs_linux: "s390x"
-          # rustc compiling the engine under qemu-riscv64 is the slowest
-          # emulated leg by far — opt-in until its runtime is observed
-          - os: ubuntu-latest
-            cibw: "cp39-manylinux_riscv64"
-            platform_tag: manylinux_2_35_riscv64
-            dist: manylinux-riscv64
-            archs_linux: "riscv64"
-            allow_fail: true
-
-          # -- macOS ------------------------------------------------------
+            musl: true
           - os: macos-15
-            cibw: "cp39-macosx*"
+            lib: libparsanol.dylib
             platform_tag: macosx_11_0_universal2
             dist: macos-universal
-
-          # -- Windows ----------------------------------------------------
+            universal: true
           - os: windows-2022
-            cibw: "cp39-win_amd64"
+            lib: parsanol.dll
             platform_tag: win_amd64
             dist: win-amd64
           - os: windows-2022
-            cibw: "cp39-win_arm64"
+            lib: parsanol.dll
             platform_tag: win_arm64
             dist: win-arm64
             rust_target: aarch64-pc-windows-msvc
           - os: windows-2022
-            cibw: "cp39-win32"
+            lib: parsanol.dll
             platform_tag: win32
             dist: win-x86
             rust_target: i686-pc-windows-msvc
-
     env:
       PARSANOL_RUST_TARGET: ${{ matrix.rust_target }}
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      # cross-arch Linux legs (i686/armv7l/ppc64le/s390x/riscv64) build and
-      # test in emulated containers; native legs are unaffected
-      - name: Set up QEMU
-        if: matrix.os == 'ubuntu-latest'
-        uses: docker/setup-qemu-action@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
         with:
-          platforms: all
-
-      - name: Build wheels (cibuildwheel)
-        uses: pypa/cibuildwheel@v3.4.1
+          python-version: '3.12'
+      - name: musl toolchain (the aarch64 musl leg)
+        if: matrix.musl
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Vendor the engine
+        shell: bash
+        run: bash scripts/vendor_engine.sh
         env:
-          CIBW_BUILD: ${{ matrix.cibw }}
-          CIBW_ARCHS_LINUX: ${{ matrix.archs_linux }}
-          # cibuildwheel 3.4.1 pins quay image tags that have since
-          # been archived; pin the live 2026.11.07-1 set explicitly
-          CIBW_MANYLINUX_X86_64_IMAGE: quay.io/pypa/manylinux_2_28_x86_64:2026.11.07-1
-          CIBW_MANYLINUX_AARCH64_IMAGE: quay.io/pypa/manylinux_2_28_aarch64:2026.11.07-1
-          CIBW_MANYLINUX_PPC64LE_IMAGE: quay.io/pypa/manylinux_2_28_ppc64le:2026.11.07-1
-          CIBW_MANYLINUX_S390X_IMAGE: quay.io/pypa/manylinux_2_28_s390x:2026.11.07-1
-          CIBW_MANYLINUX_RISCV64_IMAGE: quay.io/pypa/manylinux_2_28_riscv64:2026.11.07-1
-          CIBW_MANYLINUX_I686_IMAGE: quay.io/pypa/manylinux_2_28_i686:2026.11.07-1
-          CIBW_MUSLLINUX_X86_64_IMAGE: quay.io/pypa/musllinux_1_2_x86_64:2026.11.07-1
-          CIBW_MUSLLINUX_AARCH64_IMAGE: quay.io/pypa/musllinux_1_2_aarch64:2026.11.07-1
-          CIBW_MUSLLINUX_ARMV7L_IMAGE: quay.io/pypa/musllinux_1_2_armv7l:2026.11.07-1
-          CIBW_BEFORE_ALL_LINUX: "bash scripts/vendor_engine.sh"
-          CIBW_BEFORE_ALL_MACOS: "bash scripts/vendor_engine.sh"
-          CIBW_BEFORE_ALL_WINDOWS: "bash scripts/vendor_engine.sh"
-          # The FULL conformance suite runs on every wheel platform
-          # (emulated legs included) — release wheels prove the whole
-          # binding, not an import smoke.
-          CIBW_TEST_REQUIRES: "pytest"
-          CIBW_TEST_COMMAND: "pytest {project}/tests -q"
-          CIBW_ENVIRONMENT: 'PARSANOL_CORPUS_DIR="{project}/parsanol-rs/corpus/conformance"'
-        with:
-          output-dir: dist
-
+          PARSANOL_MUSL: ${{ matrix.musl }}
+      - name: Build the wheel
+        run: |
+          python3 -m pip install -U pip wheel
+          python3 -m pip wheel . --no-deps -w dist
       - name: Tag the wheel with its platform
         shell: bash
         run: |
-          python3 -m pip install -U wheel
           python3 -m wheel tags --remove --python-tag py3 --abi-tag none \
             --platform-tag "${{ matrix.platform_tag }}" dist/*.whl
-
-      - name: Smoke the retagged wheel
+      - name: Smoke the wheel (the full suite)
         shell: bash
         run: |
           python3 -m pip install dist/*.whl pytest
           PARSANOL_CORPUS_DIR="$GITHUB_WORKSPACE/parsanol-rs/corpus/conformance" \
             python3 -m pytest tests -q
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.dist }}
+          path: dist/*.whl
 
+  # -- QEMU-emulated Linux legs ------------------------------------------
+  # each leg drives the pinned manylinux/musllinux container for its
+  # arch directly: vendor_engine.sh installs the emulated rustup and
+  # cargo builds natively for the emulated host, then the wheel builds,
+  # retags, installs, and replays the full suite — all inside the
+  # container.
+  build-emulated:
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.allow_fail == true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: linux/386
+            image: quay.io/pypa/manylinux_2_28_i686:2026.11.07-1
+            platform_tag: manylinux_2_35_i686
+            dist: manylinux-i686
+          - arch: linux/arm/v7
+            image: quay.io/pypa/musllinux_1_2_armv7l:2026.11.07-1
+            platform_tag: musllinux_1_2_armv7l
+            dist: musllinux-armv7l
+            allow_fail: true # rustup ships no musl-armv7 installer
+          - arch: linux/ppc64le
+            image: quay.io/pypa/manylinux_2_28_ppc64le:2026.11.07-1
+            platform_tag: manylinux_2_35_ppc64le
+            dist: manylinux-ppc64le
+          - arch: linux/s390x
+            image: quay.io/pypa/manylinux_2_28_s390x:2026.11.07-1
+            platform_tag: manylinux_2_35_s390x
+            dist: manylinux-s390x
+          - arch: linux/riscv64
+            image: quay.io/pypa/manylinux_2_28_riscv64:2026.11.07-1
+            platform_tag: manylinux_2_35_riscv64
+            dist: manylinux-riscv64
+            allow_fail: true # rustc under qemu-riscv64: runtime unobserved
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: all
+      - name: Vendor, build, retag, and prove inside the container
+        run: |
+          docker run --rm --platform "${{ matrix.arch }}" \
+            -v "$GITHUB_WORKSPACE":/io -w /io \
+            "${{ matrix.image }}" \
+            bash -c '
+              set -e
+              bash scripts/vendor_engine.sh
+              pip install -U pip wheel pytest
+              pip wheel . --no-deps -w dist
+              python3 -m wheel tags --remove --python-tag py3 --abi-tag none \
+                --platform-tag "${{ matrix.platform_tag }}" dist/*.whl
+              pip install dist/*.whl
+              PARSANOL_CORPUS_DIR=/io/parsanol-rs/corpus/conformance \
+                python3 -m pytest tests -q
+            '
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.dist }}
