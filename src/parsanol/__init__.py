@@ -22,6 +22,7 @@ from ._ffi import (
     engine_version,
     export_available,
     load,
+    generate_available,
 )
 
 try:
