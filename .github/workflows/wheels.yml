@@ -164,6 +164,9 @@ jobs:
             "${{ matrix.image }}" \
             bash -c '
               set -e
+              # the manylinux images keep their python under
+              # /opt/python/cp39-cp39/bin, off PATH
+              export PATH=/opt/python/cp39-cp39/bin:$PATH
               bash scripts/vendor_engine.sh
               pip install -U pip wheel pytest
               pip wheel . --no-deps -w dist
