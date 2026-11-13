@@ -139,6 +139,9 @@ class NativeContext:
     def export_grammar(self, artifact_json: str, target: str, recovery: bool = False) -> str:
         return export_grammar(artifact_json, target, recovery, context=self)
 
+    def generate_grammar(self, artifact_json: str, variant: str, model_json: str) -> str:
+        return generate_grammar(artifact_json, variant, model_json, context=self)
+
 
 def load() -> ctypes.CDLL:
     """Load the default engine once, preserving existing lookup behavior."""
@@ -286,4 +289,38 @@ def export_grammar(artifact_json: str, target: str, recovery: bool = False,
     )
     if not pointer:
         raise ParsanolError(_last_error(context=context) or "export unavailable")
+    return _take_owned(pointer, context=context)
+
+
+def generate_available(*, context: NativeContext | None = None) -> bool:
+    """Whether the loaded cdylib exports the generation ABI (requires
+    parsanol >= 0.20.19, the graduated generation path)."""
+    lib = context.load() if context is not None else load()
+    return hasattr(lib, "parsanol_parg_generate")
+
+
+def generate_grammar(artifact_json: str, variant: str, model_json: str,
+                     *, context: NativeContext | None = None) -> str:
+    """Emit a render variant against a bound attribute map (rs#459
+    slice 2 — the graduated generation path). `model_json` is the bound
+    map as JSON text (what parse produces). Rust is the authoritative
+    lowering — the Python runtime inherits it through this C-ABI
+    surface instead of a per-language renderer.
+    """
+    lib = context.load() if context is not None else load()
+    if not hasattr(lib, "parsanol_parg_generate"):
+        raise ParsanolError(
+            "the loaded libparsanol lacks parsanol_parg_generate "
+            "(requires parsanol >= 0.20.19)"
+        )
+    generate = lib.parsanol_parg_generate
+    generate.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+    generate.restype = ctypes.c_void_p
+    pointer = generate(
+        artifact_json.encode("utf-8"),
+        variant.encode("utf-8"),
+        model_json.encode("utf-8"),
+    )
+    if not pointer:
+        raise ParsanolError(_last_error(context=context) or "generate unavailable")
     return _take_owned(pointer, context=context)

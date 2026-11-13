@@ -176,6 +176,19 @@ class PargArtifact:
         """
         return _ffi.export_grammar(self.envelope_text, target, recovery)
 
+    # -- generation (rs#459 slice 2) -----------------------------------------
+
+    def generate(self, variant: str, bound: dict) -> str:
+        """Emit a render variant against a bound attribute map — the
+        graduated generation path ("parse in reverse"). `bound` is the
+        flat string-keyed map (what apply_bindings produces; fields
+        whose values are not String/Number/Bool emit nothing, matching
+        every engine's interpreter). Rust is the authoritative
+        lowering — the Python runtime inherits it through the C ABI.
+        Requires parsanol >= 0.20.19 (check generate_available()).
+        """
+        return _ffi.generate_grammar(self.envelope_text, variant, json.dumps(bound))
+
     # -- embedded tests ------------------------------------------------------
 
     def run_tests(self, entry: str | None = None) -> TestRun:
