@@ -8,6 +8,12 @@
 # leptris/leptris-py#346 pattern). macOS builds both slices and lipos
 # a universal2 engine; Windows legs pass PARSANOL_RUST_TARGET for the
 # cross arches (the runner stays x64).
+#
+# The ENGINE SOURCE comes from the pinned release tarball
+# (parsanol-rs-version.txt), fetched here: cibuildwheel copies only
+# the package directory into its build containers, and a submodule's
+# content does not ride along — the leptris-py codeload pattern, with
+# the version file bumped by every ride PR.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -16,42 +22,52 @@ if ! command -v cargo >/dev/null 2>&1; then
   export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
+version="$(cat parsanol-rs-version.txt)"
+mkdir -p tmp/engine
+curl -sL "https://codeload.github.com/parsanol/parsanol-rs/tar.gz/refs/tags/v${version}" \
+  | tar xz --strip-components=1 -C tmp/engine
+
 mkdir -p src/parsanol/lib
+
+build() {
+  extra="${1:-}"
+  (cd tmp/engine && cargo build -p parsanol-ffi --release $extra)
+}
 
 os="$(uname -s)"
 case "$os" in
   Linux)
     lib="libparsanol.so"
-    out="parsanol-rs/target/release/libparsanol.so"
+    out="tmp/engine/target/release/libparsanol.so"
     case "$(uname -m)" in
       x86_64 | aarch64)
         # the emulated container is the target: a plain host build
-        cargo build -p parsanol-ffi --release
+        build
         ;;
       i686)
         rustup target add i686-unknown-linux-gnu
-        cargo build -p parsanol-ffi --release --target i686-unknown-linux-gnu
-        out="parsanol-rs/target/i686-unknown-linux-gnu/release/libparsanol.so"
+        build "--target i686-unknown-linux-gnu"
+        out="tmp/engine/target/i686-unknown-linux-gnu/release/libparsanol.so"
         ;;
       armv7l | armv8l)
         rustup target add armv7-unknown-linux-musleabihf
-        cargo build -p parsanol-ffi --release --target armv7-unknown-linux-musleabihf
-        out="parsanol-rs/target/armv7-unknown-linux-musleabihf/release/libparsanol.so"
+        build "--target armv7-unknown-linux-musleabihf"
+        out="tmp/engine/target/armv7-unknown-linux-musleabihf/release/libparsanol.so"
         ;;
       ppc64le)
         rustup target add powerpc64le-unknown-linux-gnu
-        cargo build -p parsanol-ffi --release --target powerpc64le-unknown-linux-gnu
-        out="parsanol-rs/target/powerpc64le-unknown-linux-gnu/release/libparsanol.so"
+        build "--target powerpc64le-unknown-linux-gnu"
+        out="tmp/engine/target/powerpc64le-unknown-linux-gnu/release/libparsanol.so"
         ;;
       s390x)
         rustup target add s390x-unknown-linux-gnu
-        cargo build -p parsanol-ffi --release --target s390x-unknown-linux-gnu
-        out="parsanol-rs/target/s390x-unknown-linux-gnu/release/libparsanol.so"
+        build "--target s390x-unknown-linux-gnu"
+        out="tmp/engine/target/s390x-unknown-linux-gnu/release/libparsanol.so"
         ;;
       riscv64)
         rustup target add riscv64gc-unknown-linux-gnu
-        cargo build -p parsanol-ffi --release --target riscv64gc-unknown-linux-gnu
-        out="parsanol-rs/target/riscv64gc-unknown-linux-gnu/release/libparsanol.so"
+        build "--target riscv64gc-unknown-linux-gnu"
+        out="tmp/engine/target/riscv64gc-unknown-linux-gnu/release/libparsanol.so"
         ;;
       *)
         echo "unsupported linux arch $(uname -m)" >&2
@@ -64,11 +80,11 @@ case "$os" in
   Darwin)
     # universal2: both slices built, lipo'd into one engine
     rustup target add x86_64-apple-darwin aarch64-apple-darwin
-    cargo build -p parsanol-ffi --release --target x86_64-apple-darwin
-    cargo build -p parsanol-ffi --release --target aarch64-apple-darwin
+    build "--target x86_64-apple-darwin"
+    build "--target aarch64-apple-darwin"
     lipo -create \
-      parsanol-rs/target/x86_64-apple-darwin/release/libparsanol.dylib \
-      parsanol-rs/target/aarch64-apple-darwin/release/libparsanol.dylib \
+      tmp/engine/target/x86_64-apple-darwin/release/libparsanol.dylib \
+      tmp/engine/target/aarch64-apple-darwin/release/libparsanol.dylib \
       -output src/parsanol/lib/libparsanol.dylib
     ;;
 
@@ -76,11 +92,11 @@ case "$os" in
     target="${PARSANOL_RUST_TARGET:-}"
     if [ -n "$target" ]; then
       rustup target add "$target"
-      cargo build -p parsanol-ffi --release --target "$target"
-      out="parsanol-rs/target/$target/release/parsanol.dll"
+      build "--target $target"
+      out="tmp/engine/target/$target/release/parsanol.dll"
     else
-      cargo build -p parsanol-ffi --release
-      out="parsanol-rs/target/release/parsanol.dll"
+      build
+      out="tmp/engine/target/release/parsanol.dll"
     fi
     cp "$out" "src/parsanol/lib/parsanol.dll"
     ;;
@@ -91,4 +107,4 @@ case "$os" in
     ;;
 esac
 
-echo "vendored $(ls src/parsanol/lib)"
+echo "vendored from parsanol-rs v${version}: $(ls src/parsanol/lib)"
