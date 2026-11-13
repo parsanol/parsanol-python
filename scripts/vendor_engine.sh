@@ -9,11 +9,12 @@
 # a universal2 engine; Windows legs pass PARSANOL_RUST_TARGET for the
 # cross arches (the runner stays x64).
 #
-# The ENGINE SOURCE comes from the pinned release tarball
-# (parsanol-rs-version.txt), fetched here: cibuildwheel copies only
-# the package directory into its build containers, and a submodule's
+# The ENGINE SOURCE comes from the pinned release tree
+# (parsanol-rs-version.txt carries the release COMMIT; the engine
+# ships without tags), fetched here: cibuildwheel copies only the
+# package directory into its build containers, and a submodule's
 # content does not ride along — the leptris-py codeload pattern, with
-# the version file bumped by every ride PR.
+# the commit bumped by every ride PR.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -22,9 +23,9 @@ if ! command -v cargo >/dev/null 2>&1; then
   export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
-version="$(cat parsanol-rs-version.txt)"
+commit="$(cat parsanol-rs-version.txt)"
 mkdir -p tmp/engine
-curl -sL "https://codeload.github.com/parsanol/parsanol-rs/tar.gz/refs/tags/v${version}" \
+curl -sL "https://codeload.github.com/parsanol/parsanol-rs/tar.gz/${commit}" \
   | tar xz --strip-components=1 -C tmp/engine
 
 mkdir -p src/parsanol/lib
@@ -107,4 +108,4 @@ case "$os" in
     ;;
 esac
 
-echo "vendored from parsanol-rs v${version}: $(ls src/parsanol/lib)"
+echo "vendored from parsanol-rs @${commit:0,12}: $(ls src/parsanol/lib)"
