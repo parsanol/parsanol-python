@@ -113,7 +113,7 @@ jobs:
             docker run --rm --platform linux/arm64 \
               -v "$GITHUB_WORKSPACE":/io -w /io alpine:3.20 \
               sh -c 'apk add -q python3 py3-pip py3-pytest && \
-                pip3 install -q dist/*.whl && \
+                PIP_BREAK_SYSTEM_PACKAGES=1 pip3 install -q dist/*.whl && \
                 PARSANOL_CORPUS_DIR=/io/parsanol-rs/corpus/conformance \
                 python3 -m pytest tests -q'
           else
