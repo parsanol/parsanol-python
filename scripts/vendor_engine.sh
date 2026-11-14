@@ -18,15 +18,18 @@
 set -eu
 cd "$(dirname "$0")/.."
 
+echo "vendor_engine: uname -m=$(uname -m)"
 if ! command -v cargo >/dev/null 2>&1; then
-  # rustup ships no standalone installer for armv7-musl: bootstrap the
-  # x86_64 host toolchain instead (the emulated runner is x86_64, so
-  # rustc runs native) and add the armv7 target after the install.
-  default_host=""
-  case "$(uname -m)" in
-    armv7l | armv8l) default_host="--default-host x86_64-unknown-linux-musl" ;;
-  esac
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal $default_host
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal || true
+  export PATH="$HOME/.cargo/bin:$PATH"
+fi
+if ! command -v cargo >/dev/null 2>&1; then
+  # rustup ships no standalone installer for armv7-musl (rustup-init
+  # detected an armv7 host and 404'd): retry with an explicit x86_64
+  # host toolchain — the runner is x86_64, so rustc runs native and
+  # only the link tools cross qemu. The emulated target is added by the
+  # arch case below.
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-host x86_64-unknown-linux-musl
   export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
