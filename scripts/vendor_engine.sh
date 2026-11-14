@@ -25,14 +25,15 @@ if ! command -v cargo >/dev/null 2>&1; then
       # sh.rustup.rs's install script detects the armv7-musl host and
       # 404s BEFORE rustup-init ever runs (no standalone installer
       # exists for that triple) - no rustup-init flag can matter. Fetch
-      # the x86_64-musl rustup-init directly: a static binary that runs
-      # on the x86_64 runner, installs the x86_64 host toolchain, and
-      # the arch case below adds the armv7 std target.
+      # the x86_64 GNU rustup-init directly: glibc-linked, runs native
+      # on the x86_64 runner (the musl-flavored toolchain's binaries
+      # need the absent musl loader), and the arch case below adds the
+      # armv7 std target.
       curl --proto '=https' --tlsv1.2 -sSfL \
-        https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-musl/rustup-init \
+        https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init \
         -o /tmp/rustup-init
       chmod +x /tmp/rustup-init
-      /tmp/rustup-init -y --profile minimal --default-host x86_64-unknown-linux-musl
+      /tmp/rustup-init -y --profile minimal --default-host x86_64-unknown-linux-gnu
       ;;
     *)
       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
