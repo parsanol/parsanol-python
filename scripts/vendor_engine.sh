@@ -54,11 +54,25 @@ build() {
   (cd tmp/engine && cargo build -p parsanol-ffi --release $extra)
 }
 
+# The runner-side cross link (the Windows-leg pattern, on Linux too):
+# cargo-zigbuild supplies the foreign-musl C toolchain via zig cc; the
+# emulated container never runs a toolchain installer, it only smokes
+# the finished wheel.
+build_cross() {
+  target="${1:?cross mode needs PARSANOL_RUST_TARGET}"
+  (cd tmp/engine && cargo zigbuild -p parsanol-ffi --release --target "$target")
+}
+
 os="$(uname -s)"
 case "$os" in
   Linux)
     lib="libparsanol.so"
     out="tmp/engine/target/release/libparsanol.so"
+    if [ -n "${PARSANOL_RUST_TARGET:-}" ]; then
+      rustup target add "$PARSANOL_RUST_TARGET"
+      build_cross "$PARSANOL_RUST_TARGET"
+      out="tmp/engine/target/$PARSANOL_RUST_TARGET/release/libparsanol.so"
+    else
     case "$(uname -m)" in
       x86_64 | aarch64)
         # the emulated container is the target: a plain host build
@@ -102,6 +116,7 @@ case "$os" in
         exit 1
         ;;
     esac
+    fi
     cp "$out" "src/parsanol/lib/$lib"
     ;;
 
