@@ -19,7 +19,14 @@ set -eu
 cd "$(dirname "$0")/.."
 
 if ! command -v cargo >/dev/null 2>&1; then
-  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+  # rustup ships no standalone installer for armv7-musl: bootstrap the
+  # x86_64 host toolchain instead (the emulated runner is x86_64, so
+  # rustc runs native) and add the armv7 target after the install.
+  default_host=""
+  case "$(uname -m)" in
+    armv7l | armv8l) default_host="--default-host x86_64-unknown-linux-musl" ;;
+  esac
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal $default_host
   export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
@@ -66,9 +73,17 @@ case "$os" in
         out="tmp/engine/target/s390x-unknown-linux-gnu/release/libparsanol.so"
         ;;
       riscv64)
-        rustup target add riscv64gc-unknown-linux-gnu
-        build "--target riscv64gc-unknown-linux-gnu"
-        out="tmp/engine/target/riscv64gc-unknown-linux-gnu/release/libparsanol.so"
+        # the riscv64 tier ships musl-only today (the glibc images left
+        # quay entirely) - PARSANOL_MUSL=1 selects the musl triple
+        if [ "${PARSANOL_MUSL:-}" = "1" ]; then
+          rustup target add riscv64gc-unknown-linux-musl
+          build "--target riscv64gc-unknown-linux-musl"
+          out="tmp/engine/target/riscv64gc-unknown-linux-musl/release/libparsanol.so"
+        else
+          rustup target add riscv64gc-unknown-linux-gnu
+          build "--target riscv64gc-unknown-linux-gnu"
+          out="tmp/engine/target/riscv64gc-unknown-linux-gnu/release/libparsanol.so"
+        fi
         ;;
       *)
         echo "unsupported linux arch $(uname -m)" >&2

@@ -147,7 +147,7 @@ jobs:
             image: quay.io/pypa/musllinux_1_2_armv7l:2026.11.07-1
             platform_tag: musllinux_1_2_armv7l
             dist: musllinux-armv7l
-            allow_fail: true # rustup ships no musl-armv7 installer
+            allow_fail: true # green-watch first: the x86_64-host bootstrap fix is unobserved
           - arch: linux/ppc64le
             image: quay.io/pypa/manylinux_2_28_ppc64le:2026.11.07-1
             platform_tag: manylinux_2_28_ppc64le
@@ -157,9 +157,12 @@ jobs:
             platform_tag: manylinux_2_28_s390x
             dist: manylinux-s390x
           - arch: linux/riscv64
-            image: quay.io/pypa/manylinux_2_31_riscv64:2026.11.07-1
-            platform_tag: manylinux_2_31_riscv64
-            dist: manylinux-riscv64
+            # the glibc riscv64 images left quay entirely (every date,
+            # including latest, 404s) - the tier ships musl-only today
+            image: quay.io/pypa/musllinux_1_2_riscv64:latest
+            platform_tag: musllinux_1_2_riscv64
+            dist: musllinux-riscv64
+            musl: true
             allow_fail: true # rustc under qemu-riscv64: runtime unobserved
     steps:
       - uses: actions/checkout@v4
@@ -179,6 +182,7 @@ jobs:
               # the manylinux images keep their python under
               # /opt/python/cp39-cp39/bin, off PATH
               export PATH=/opt/python/cp39-cp39/bin:$PATH
+              export PARSANOL_MUSL=${{ matrix.musl == true && '1' || '0' }}
               bash scripts/vendor_engine.sh
               pip install -U pip wheel pytest
               pip wheel . --no-deps -w dist
