@@ -80,7 +80,11 @@ case "$os" in
         out="tmp/engine/target/i686-unknown-linux-gnu/release/libparsanol.so"
         ;;
       armv7l | armv8l)
-        rustup target add armv7-unknown-linux-musleabihf
+        # apk's rust targets the native armv7-musl directly and ships
+        # no rustup - a target add is both unneeded and impossible
+        if command -v rustup >/dev/null 2>&1; then
+          rustup target add armv7-unknown-linux-musleabihf
+        fi
         build "--target armv7-unknown-linux-musleabihf"
         out="tmp/engine/target/armv7-unknown-linux-musleabihf/release/libparsanol.so"
         ;;
