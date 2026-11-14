@@ -22,24 +22,20 @@ echo "vendor_engine: uname -m=$(uname -m)"
 if ! command -v cargo >/dev/null 2>&1; then
   case "$(uname -m)" in
     armv7l | armv8l)
-      # sh.rustup.rs's install script detects the armv7-musl host and
-      # 404s BEFORE rustup-init ever runs (no standalone installer
-      # exists for that triple) - no rustup-init flag can matter. Fetch
-      # the x86_64 GNU rustup-init directly: glibc-linked, runs native
-      # on the x86_64 runner (the musl-flavored toolchain's binaries
-      # need the absent musl loader), and the arch case below adds the
-      # armv7 std target.
-      curl --proto '=https' --tlsv1.2 -sSfL \
-        https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init \
-        -o /tmp/rustup-init
-      chmod +x /tmp/rustup-init
-      /tmp/rustup-init -y --profile minimal --default-host x86_64-unknown-linux-gnu
+      # the armv7-musl rust std cannot produce cdylibs at all ("does
+      # not support these crate types" - and the rustup install script
+      # 404s on the triple anyway). Alpine's own rust package ships a
+      # dylib-capable rustc for armv7; edge carries one new enough for
+      # the engine's MSRV. No rustup anywhere in this container.
+      apk add -q rust cargo \
+        --repository http://dl-cdn.alpinelinux.org/alpine/edge/main \
+        --allow-untrusted
       ;;
     *)
       curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
       ;;
   esac
-  export PATH="$HOME/.cargo/bin:$PATH"
+  export PATH="$HOME/.cargo/bin:/usr/bin:$PATH"
 fi
 
 commit="$(cat parsanol-rs-version.txt)"
