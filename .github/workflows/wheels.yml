@@ -147,12 +147,6 @@ jobs:
             image: quay.io/pypa/musllinux_1_2_armv7l:2026.11.07-1
             platform_tag: musllinux_1_2_armv7l
             dist: musllinux-armv7l
-            # cross mode: the RUNNER builds via cargo-zigbuild (no
-            # armv7 toolchain can be installed inside the emulated
-            # container - the rustup script 404s on the triple and
-            # foreign-flavor toolchains can't exec across the loader
-            # gap); the container only smokes the wheel
-            cross: true
             allow_fail: true # green-watch first
           - arch: linux/ppc64le
             image: quay.io/pypa/manylinux_2_28_ppc64le:2026.11.07-1
@@ -178,30 +172,7 @@ jobs:
         uses: docker/setup-qemu-action@v3
         with:
           platforms: all
-      - name: Cross-build the engine on the runner (cargo-zigbuild)
-        if: matrix.cross
-        run: |
-          python3 -m pip install -U pip wheel cargo-zigbuild
-          rustup target add armv7-unknown-linux-musleabihf
-          PARSANOL_RUST_TARGET=armv7-unknown-linux-musleabihf bash scripts/vendor_engine.sh
-          python3 -m pip wheel . --no-deps -w dist
-          python3 -m wheel tags --remove --python-tag py3 --abi-tag none \
-            --platform-tag "${{ matrix.platform_tag }}" dist/*.whl
-      - name: Smoke the wheel in the emulated container
-        if: matrix.cross
-        run: |
-          docker run --rm --platform "${{ matrix.arch }}" \
-            -v "$GITHUB_WORKSPACE":/io -w /io \
-            "${{ matrix.image }}" \
-            bash -c '
-              set -e
-              export PATH=/opt/python/cp39-cp39/bin:$PATH
-              pip install dist/*.whl
-              PARSANOL_CORPUS_DIR=/io/parsanol-rs/corpus/conformance \
-                python3 -m pytest tests -q
-            '
       - name: Vendor, build, retag, and prove inside the container
-        if: matrix.cross != true
         run: |
           docker run --rm --platform "${{ matrix.arch }}" \
             -v "$GITHUB_WORKSPACE":/io -w /io \
