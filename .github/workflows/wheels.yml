@@ -139,10 +139,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: linux/386
-            image: quay.io/pypa/manylinux_2_28_i686:2026.11.07-1
-            platform_tag: manylinux_2_28_i686
-            dist: manylinux-i686
+          # the i686 manylinux_2_28 image is gone from quay entirely
+          # (every date 404s — i686 manylinux was discontinued
+          # upstream), like the glibc riscv64 tier below; the tier
+          # ships without 32-bit x86 wheels today.
           - arch: linux/arm/v7
             image: quay.io/pypa/musllinux_1_2_armv7l:2026.11.07-1
             platform_tag: musllinux_1_2_armv7l
