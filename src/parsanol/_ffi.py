@@ -142,6 +142,19 @@ class NativeContext:
     def generate_grammar(self, artifact_json: str, variant: str, model_json: str) -> str:
         return generate_grammar(artifact_json, variant, model_json, context=self)
 
+    def mask_available(self) -> bool:
+        return mask_available(context=self)
+
+    def mask_open(self, artifact_json: str, entry: str | None = None,
+                  vocab: list[tuple[int, str]] | None = None) -> int:
+        return mask_open(artifact_json, entry, vocab, context=self)
+
+    def mask_step(self, handle: int, prefix: str) -> bytes:
+        return mask_step(handle, prefix, context=self)
+
+    def mask_free(self, handle: int) -> None:
+        mask_free(handle, context=self)
+
 
 def load() -> ctypes.CDLL:
     """Load the default engine once, preserving existing lookup behavior."""
@@ -324,3 +337,104 @@ def generate_grammar(artifact_json: str, variant: str, model_json: str,
     if not pointer:
         raise ParsanolError(_last_error(context=context) or "generate unavailable")
     return _take_owned(pointer, context=context)
+
+
+def mask_available(*, context: NativeContext | None = None) -> bool:
+    """Whether the loaded cdylib exports the constrained-decoding mask
+    ABI (rs#530: parsanol_mask_open/step/free)."""
+    lib = context.load() if context is not None else load()
+    return hasattr(lib, "parsanol_mask_open")
+
+
+def mask_open(artifact_json: str, entry: str | None = None,
+              vocab: list[tuple[int, str]] | None = None,
+              *, context: NativeContext | None = None) -> int:
+    """Open a constrained-decoding mask handle over a checksum-verified
+    artifact entry and a tokenizer vocabulary (rs#530). `entry` may be
+    None for the artifact's default entry; `vocab` is a list of
+    (token id, decoded text) pairs and may be None to derive the
+    vocabulary from the artifact's terminals (ids 1..n). Returns an
+    opaque handle (free with mask_free); raises ParsanolError naming the
+    failure (bad checksum, unknown entry, bad vocabulary).
+    """
+    lib = context.load() if context is not None else load()
+    if not hasattr(lib, "parsanol_mask_open"):
+        raise ParsanolError(
+            "the loaded libparsanol lacks parsanol_mask_open (rs#530 mask ABI)"
+        )
+    if vocab is not None:
+        if not vocab:
+            raise ValueError("vocab must be a non-empty list of (id, text) pairs")
+        seen: set[int] = set()
+        for token_id, _text in vocab:
+            if not isinstance(token_id, int) or isinstance(token_id, bool):
+                raise TypeError("vocab ids must be ints")
+            if token_id in seen:
+                raise ValueError(f"duplicate token id {token_id} in vocab")
+            seen.add(token_id)
+        vocab_wire = json.dumps(
+            [{"id": token_id, "text": text} for token_id, text in vocab],
+            ensure_ascii=False,
+        ).encode("utf-8")
+    else:
+        vocab_wire = None
+    open_fn = lib.parsanol_mask_open
+    open_fn.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
+    open_fn.restype = ctypes.c_void_p
+    handle = open_fn(
+        artifact_json.encode("utf-8"),
+        (entry.encode("utf-8") if entry is not None else None),
+        vocab_wire,
+    )
+    if not handle:
+        raise ParsanolError(_last_error(context=context) or "mask handle unavailable")
+    return handle
+
+
+def mask_step(handle: int, prefix: str, *, context: NativeContext | None = None) -> bytes:
+    """The next-step token bitmask at `prefix` (the consumed text so
+    far), in the llguidance wire format: bit i of word i/32 (packed
+    little-endian u32 words) = token i allowed. The bytes legitimately
+    contain interior NULs — this returns the exact wire length, never
+    stopping at a NUL. The buffer is freed engine-side before returning.
+    """
+    lib = context.load() if context is not None else load()
+    if not hasattr(lib, "parsanol_mask_step"):
+        raise ParsanolError(
+            "the loaded libparsanol lacks parsanol_mask_step (rs#530 mask ABI)"
+        )
+    step = lib.parsanol_mask_step
+    step.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        ctypes.c_size_t,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_size_t),
+    ]
+    step.restype = ctypes.c_int
+    data = prefix.encode("utf-8")
+    out = ctypes.c_void_p()
+    out_len = ctypes.c_size_t()
+    rc = step(ctypes.c_void_p(handle), data, len(data),
+              ctypes.byref(out), ctypes.byref(out_len))
+    if rc != 0:
+        raise ParsanolError(_last_error(context=context)
+                            or f"mask step failed (rc={rc})")
+    try:
+        return ctypes.string_at(out, out_len.value)
+    finally:
+        lib.parsanol_parg_free(ctypes.c_void_p(out.value))
+
+
+def mask_free(handle: int, *, context: NativeContext | None = None) -> None:
+    """Release a mask handle from mask_open. A freed handle must never
+    be stepped again."""
+    lib = context.load() if context is not None else load()
+    if not hasattr(lib, "parsanol_mask_free"):
+        raise ParsanolError(
+            "the loaded libparsanol lacks parsanol_mask_free (rs#530 mask ABI)"
+        )
+    free = lib.parsanol_mask_free
+    free.argtypes = [ctypes.c_void_p]
+    free.restype = None
+    free(ctypes.c_void_p(handle))
