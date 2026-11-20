@@ -23,6 +23,7 @@ from ._ffi import (
     export_available,
     load,
     generate_available,
+    mask_available,
 )
 
 try:
