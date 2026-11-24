@@ -27,6 +27,11 @@ jobs:
 
   publish:
     needs: wheels
+    # The emulated green-watch legs (armv7-musl: allow_fail) mark the
+    # wheels call failed at the workflow_call boundary even though the
+    # job itself is continue-on-error; the upload proceeds with the
+    # wheels that built and the audit stays the honesty leg.
+    if: ${{ !cancelled() && needs.wheels.result != 'skipped' }}
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
